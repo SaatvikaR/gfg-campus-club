@@ -1,66 +1,11 @@
-:root {
-  --text: #1a1a1a;
-  --bg: #ffffff;
-  --border: #e5e4e7;
-  --accent: #2f8d46;
-
-  font: 16px/1.5 'Segoe UI', system-ui, sans-serif;
-  color: var(--text);
-  background: var(--bg);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-*, *::before, *::after {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  padding: 0;
-}
-
-#root {
-  width: 100%;
-  max-width: 100%;
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
-}
-
-h1, h2, h3 {
-  font-family: 'Segoe UI', system-ui, sans-serif;
-  color: var(--text);
-}
-
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; padding: 0; transition: background 0.3s; }
+#root { width: 100%; max-width: 100%; min-height: 100svh; display: flex; flex-direction: column; }
+h1, h2, h3 { font-family: 'Segoe UI', system-ui, sans-serif; }
 p { margin: 0; }
-
-img, svg {
-  max-width: 100%;
-  height: auto;
-}
-
-/* Smooth scrolling */
-html {
-  scroll-behavior: smooth;
-}
-
-/* Prevent horizontal overflow */
-main, section, div {
-  max-width: 100%;
-}
-
-/* Better mobile tap targets */
-button, a {
-  min-height: 36px;
-}
-
-/* Responsive table base */
-table {
-  min-width: 100%;
-}
-
-@media (max-width: 600px) {
-  h1 { font-size: 1.5rem !important; }
-  h2 { font-size: 1.1rem !important; }
-}
+img, svg { max-width: 100%; height: auto; }
+html { scroll-behavior: smooth; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #2f8d46; border-radius: 3px; }
+@media (max-width: 600px) { h1 { font-size: 1.5rem !important; } h2 { font-size: 1.1rem !important; } }

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react"
+import { useTheme } from "../ThemeContext"
 
-const GEMINI_API_KEY = "AIzaSyA-yL2QzA4A9gYM1yQTUUwjlFdH7pQY2pE"
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`
 
 function useIsMobile() {
@@ -44,9 +45,241 @@ Be encouraging but honest — give a score out of 10 for each answer.
 Format questions clearly as: "Question: ..."
 Keep feedback structured: Strengths → Gaps → Ideal Answer → Score`
 
+const RECOMMENDER_SYSTEM = `You are a competitive programming mentor at GeeksforGeeks Campus Club, RIT.
+Your job is to recommend exactly 8 coding problems from GeeksforGeeks based on the student's interests and skill level.
+
+For each problem, provide:
+1. Problem Name
+2. Topic
+3. Difficulty (Easy / Medium / Hard)
+4. Why it's good for them (one sentence)
+5. Direct GFG URL (use real geeksforgeeks.org problem links)
+
+Format your response as a clean numbered list like this:
+1. **Problem Name** | Topic | Difficulty
+   Why: <reason>
+   Link: https://www.geeksforgeeks.org/...
+
+2. **Problem Name** | Topic | Difficulty
+   Why: <reason>
+   Link: https://www.geeksforgeeks.org/...
+
+Only recommend problems from GeeksforGeeks. Be specific with real problem names and real URLs.
+Do not make up URLs — only use actual GFG problem links you are confident about.`
+
 const DSA_QUICK = ["Explain Binary Search", "What is Dynamic Programming?", "Difference between Stack and Queue", "Explain BFS vs DFS", "What is time complexity?", "Explain Merge Sort"]
 const TOPICS       = ["DSA", "Operating Systems", "DBMS", "Computer Networks", "System Design", "HR/Behavioral"]
 const DIFFICULTIES = ["Easy", "Medium", "Hard"]
+
+const INTEREST_TOPICS = ["Arrays", "Strings", "Linked List", "Trees", "Graphs", "Dynamic Programming", "Recursion", "Sorting", "Binary Search", "Stacks & Queues", "Hashing", "Greedy", "Backtracking", "Bit Manipulation"]
+const SKILL_LEVELS    = ["Beginner", "Intermediate", "Advanced"]
+const GOALS           = ["Placement Prep", "Competitive Programming", "Concept Building", "Interview Cracking"]
+
+function ProblemRecommender({ isMobile }) {
+  const { theme, isDark } = useTheme()
+  const [selectedTopics,  setSelectedTopics]  = useState([])
+  const [skillLevel,      setSkillLevel]      = useState("")
+  const [goal,            setGoal]            = useState("")
+  const [result,          setResult]          = useState("")
+  const [loading,         setLoading]         = useState(false)
+  const [error,           setError]           = useState("")
+  const [generated,       setGenerated]       = useState(false)
+
+  const toggleTopic = (t) => setSelectedTopics(prev =>
+    prev.includes(t) ? prev.filter(x => x !== t) : prev.length < 5 ? [...prev, t] : prev
+  )
+
+  const handleGenerate = async () => {
+    if (selectedTopics.length === 0) { setError("Please select at least one topic."); return }
+    if (!skillLevel)                 { setError("Please select your skill level."); return }
+    if (!goal)                       { setError("Please select your goal."); return }
+    setError(""); setLoading(true); setResult(""); setGenerated(false)
+
+    const prompt = `Student profile:
+- Skill Level: ${skillLevel}
+- Interested Topics: ${selectedTopics.join(", ")}
+- Goal: ${goal}
+
+Please recommend 8 GeeksforGeeks problems perfectly suited for this student.`
+
+    try {
+      const reply = await askGemini(RECOMMENDER_SYSTEM, prompt)
+      setResult(reply); setGenerated(true)
+    } catch (e) {
+      setError("Failed to get recommendations. Please try again.")
+    } finally { setLoading(false) }
+  }
+
+  const handleReset = () => {
+    setSelectedTopics([]); setSkillLevel(""); setGoal("")
+    setResult(""); setGenerated(false); setError("")
+  }
+
+  // Parse result into structured cards
+  const parseProblems = (text) => {
+    const lines = text.split("\n").filter(l => l.trim())
+    const problems = []
+    let current = null
+    for (const line of lines) {
+      const match = line.match(/^\d+\.\s+\*\*(.+?)\*\*\s*\|\s*(.+?)\s*\|\s*(.+)/)
+      if (match) {
+        if (current) problems.push(current)
+        current = { name: match[1], topic: match[2].trim(), difficulty: match[3].trim(), why: "", link: "" }
+      } else if (current && line.trim().startsWith("Why:")) {
+        current.why = line.replace("Why:", "").trim()
+      } else if (current && line.trim().startsWith("Link:")) {
+        current.link = line.replace("Link:", "").trim()
+      }
+    }
+    if (current) problems.push(current)
+    return problems
+  }
+
+  const diffColor = (d) => {
+    if (d === "Easy")   return { bg: isDark ? "rgba(34,197,94,0.15)" : "#dcfce7", text: "#16a34a" }
+    if (d === "Hard")   return { bg: isDark ? "rgba(239,68,68,0.15)" : "#fee2e2", text: "#dc2626" }
+    return                    { bg: isDark ? "rgba(234,179,8,0.15)"  : "#fef9c3", text: "#ca8a04" }
+  }
+
+  const chipStyle = (active) => ({
+    padding: "6px 14px", borderRadius: "999px", cursor: "pointer",
+    fontSize: isMobile ? "0.78rem" : "0.83rem", fontWeight: "600",
+    border: active ? "1px solid #2f8d46" : `1px solid ${theme.border}`,
+    background: active ? "#2f8d46" : theme.card,
+    color: active ? "white" : theme.muted,
+    transition: "all 0.15s"
+  })
+
+  const problems = generated ? parseProblems(result) : []
+
+  return (
+    <div style={{ border: `1px solid ${theme.border}`, borderRadius: "16px", overflow: "hidden", boxShadow: isDark ? "0 4px 24px rgba(0,0,0,0.3)" : "0 4px 24px rgba(0,0,0,0.07)" }}>
+
+      {/* Header */}
+      <div style={{ background: "linear-gradient(135deg, #2f8d46, #22703a)", padding: isMobile ? "14px 16px" : "18px 24px", display: "flex", alignItems: "center", gap: "12px" }}>
+        <div style={{ width: "40px", height: "40px", background: "rgba(255,255,255,0.2)", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.3rem", flexShrink: 0 }}>🎯</div>
+        <div style={{ flex: 1 }}>
+          <div style={{ color: "white", fontWeight: "700", fontSize: isMobile ? "0.97rem" : "1.05rem" }}>Problem Recommender</div>
+          <div style={{ color: "rgba(255,255,255,0.75)", fontSize: isMobile ? "0.75rem" : "0.82rem" }}>Get personalised GFG problems based on your interests</div>
+        </div>
+        {generated && (
+          <button onClick={handleReset} style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: "7px", color: "white", padding: "5px 12px", cursor: "pointer", fontSize: "0.78rem", fontWeight: "600" }}>
+            Reset
+          </button>
+        )}
+      </div>
+
+      <div style={{ padding: isMobile ? "18px 16px" : "24px 28px", background: theme.bg }}>
+
+        {!generated ? (
+          <>
+            {/* Topics */}
+            <div style={{ marginBottom: "22px" }}>
+              <div style={{ fontWeight: "700", fontSize: "0.9rem", color: theme.text, marginBottom: "4px" }}>
+                Select Topics <span style={{ color: theme.muted, fontWeight: "400", fontSize: "0.8rem" }}>(pick up to 5)</span>
+              </div>
+              <div style={{ fontSize: "0.78rem", color: theme.muted, marginBottom: "10px" }}>{selectedTopics.length}/5 selected</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                {INTEREST_TOPICS.map(t => (
+                  <button key={t} onClick={() => toggleTopic(t)} style={chipStyle(selectedTopics.includes(t))}>{t}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Skill level */}
+            <div style={{ marginBottom: "22px" }}>
+              <div style={{ fontWeight: "700", fontSize: "0.9rem", color: theme.text, marginBottom: "10px" }}>Skill Level</div>
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                {SKILL_LEVELS.map(s => (
+                  <button key={s} onClick={() => setSkillLevel(s)} style={chipStyle(skillLevel === s)}>{s}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Goal */}
+            <div style={{ marginBottom: "24px" }}>
+              <div style={{ fontWeight: "700", fontSize: "0.9rem", color: theme.text, marginBottom: "10px" }}>Your Goal</div>
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                {GOALS.map(g => (
+                  <button key={g} onClick={() => setGoal(g)} style={chipStyle(goal === g)}>{g}</button>
+                ))}
+              </div>
+            </div>
+
+            {error && <div style={{ color: "#f87171", fontSize: "0.85rem", marginBottom: "14px", fontWeight: "600" }}>⚠️ {error}</div>}
+
+            {/* Generate button */}
+            <button onClick={handleGenerate} disabled={loading} style={{
+              width: "100%", background: loading ? theme.border : "#2f8d46", color: "white",
+              border: "none", borderRadius: "10px", padding: "13px",
+              fontSize: "1rem", fontWeight: "700", cursor: loading ? "not-allowed" : "pointer",
+              fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
+              transition: "background 0.2s"
+            }}>
+              {loading ? (
+                <>
+                  <div style={{ width: "16px", height: "16px", border: "2px solid rgba(255,255,255,0.3)", borderTop: "2px solid white", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                  Finding best problems for you…
+                </>
+              ) : "✨ Get My Problem Recommendations"}
+            </button>
+          </>
+        ) : (
+          <>
+            {/* Summary bar */}
+            <div style={{ background: isDark ? "rgba(47,141,70,0.15)" : "#f0fdf4", border: "1px solid #2f8d46", borderRadius: "10px", padding: "12px 16px", marginBottom: "20px", display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
+              <span style={{ fontSize: "0.82rem", fontWeight: "700", color: "#2f8d46" }}>Your Profile:</span>
+              <span style={{ ...chipStyle(true), padding: "3px 10px", fontSize: "0.78rem" }}>{skillLevel}</span>
+              <span style={{ ...chipStyle(true), padding: "3px 10px", fontSize: "0.78rem" }}>{goal}</span>
+              {selectedTopics.map(t => <span key={t} style={{ ...chipStyle(true), padding: "3px 10px", fontSize: "0.78rem" }}>{t}</span>)}
+            </div>
+
+            {/* Problem cards */}
+            {problems.length > 0 ? (
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)", gap: "14px" }}>
+                {problems.map((p, i) => {
+                  const dc = diffColor(p.difficulty)
+                  return (
+                    <div key={i} style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: "12px", padding: "16px", boxShadow: isDark ? "0 2px 10px rgba(0,0,0,0.3)" : "0 2px 8px rgba(0,0,0,0.06)" }}>
+                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "8px", marginBottom: "8px" }}>
+                        <div style={{ fontWeight: "700", fontSize: "0.95rem", color: theme.text, lineHeight: "1.4" }}>
+                          <span style={{ color: theme.muted, fontSize: "0.8rem", marginRight: "6px" }}>#{i + 1}</span>
+                          {p.name}
+                        </div>
+                        <span style={{ background: dc.bg, color: dc.text, padding: "2px 8px", borderRadius: "999px", fontSize: "0.72rem", fontWeight: "700", flexShrink: 0 }}>{p.difficulty}</span>
+                      </div>
+                      <div style={{ fontSize: "0.78rem", color: "#2f8d46", fontWeight: "600", marginBottom: "6px" }}>📂 {p.topic}</div>
+                      {p.why && <div style={{ fontSize: "0.82rem", color: theme.muted, lineHeight: "1.5", marginBottom: "10px" }}>💡 {p.why}</div>}
+                      {p.link ? (
+                        <a href={p.link} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: "5px", background: "#2f8d46", color: "white", padding: "6px 14px", borderRadius: "7px", fontSize: "0.82rem", fontWeight: "600", textDecoration: "none" }}>
+                          Solve on GFG →
+                        </a>
+                      ) : (
+                        <a href={`https://www.geeksforgeeks.org/tag/${p.topic.toLowerCase().replace(/ /g, "-")}/`} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: "5px", background: "#2f8d46", color: "white", padding: "6px 14px", borderRadius: "7px", fontSize: "0.82rem", fontWeight: "600", textDecoration: "none" }}>
+                          Browse on GFG →
+                        </a>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              // Fallback: show raw text if parsing fails
+              <div style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: "12px", padding: "20px", whiteSpace: "pre-wrap", fontSize: "0.9rem", lineHeight: "1.8", color: theme.text }}>
+                {result}
+              </div>
+            )}
+
+            <button onClick={handleReset} style={{ marginTop: "20px", width: "100%", background: "none", border: `1px solid ${theme.border}`, borderRadius: "10px", padding: "11px", fontSize: "0.93rem", fontWeight: "600", cursor: "pointer", color: theme.muted, fontFamily: "inherit" }}>
+              🔄 Get New Recommendations
+            </button>
+          </>
+        )}
+      </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+    </div>
+  )
+}
 
 function ChatBot({ icon, title, subtitle, systemPrompt, quickChips, extraHeader, welcomeIcon, welcomeText, welcomeSub, welcomeAction, isMobile }) {
   const [messages, setMessages] = useState([])
@@ -91,12 +324,12 @@ function ChatBot({ icon, title, subtitle, systemPrompt, quickChips, extraHeader,
       {extraHeader}
 
       {/* Messages */}
-      <div style={{ height: isMobile ? "320px" : "420px", overflowY: "auto", padding: isMobile ? "16px" : "24px", background: "#fafafa", display: "flex", flexDirection: "column", gap: "14px" }}>
+      <div style={{ height: isMobile ? "320px" : "420px", overflowY: "auto", padding: isMobile ? "16px" : "24px", background: "#172032", display: "flex", flexDirection: "column", gap: "14px" }}>
         {messages.length === 0 ? (
-          <div style={{ textAlign: "center", padding: isMobile ? "28px 12px" : "40px 20px", color: "#888" }}>
+          <div style={{ textAlign: "center", padding: isMobile ? "28px 12px" : "40px 20px", color: "#64748b" }}>
             <div style={{ fontSize: "2.5rem", marginBottom: "10px" }}>{welcomeIcon}</div>
-            <div style={{ fontSize: "0.97rem", fontWeight: "600", color: "#444", marginBottom: "5px" }}>{welcomeText}</div>
-            <div style={{ fontSize: "0.83rem", color: "#999", marginBottom: welcomeAction ? "14px" : 0 }}>{welcomeSub}</div>
+            <div style={{ fontSize: "0.97rem", fontWeight: "600", color: "#cbd5e1", marginBottom: "5px" }}>{welcomeText}</div>
+            <div style={{ fontSize: "0.83rem", color: "#475569", marginBottom: welcomeAction ? "14px" : 0 }}>{welcomeSub}</div>
             {welcomeAction}
           </div>
         ) : (
@@ -107,16 +340,16 @@ function ChatBot({ icon, title, subtitle, systemPrompt, quickChips, extraHeader,
             } : m.role === "error" ? {
               alignSelf: "center", background: "#fef2f2", color: "#dc2626", padding: "9px 14px", borderRadius: "8px", fontSize: "0.83rem", border: "1px solid #fecaca"
             } : {
-              alignSelf: "flex-start", background: "white", color: "#1a1a1a", padding: "10px 14px",
+              alignSelf: "flex-start", background: "#1e293b", color: "#e2e8f0", padding: "10px 14px",
               borderRadius: "14px 14px 14px 3px", maxWidth: isMobile ? "92%" : "82%", fontSize: "0.91rem", lineHeight: "1.7",
-              border: "1px solid #e8e8e8", boxShadow: "0 1px 4px rgba(0,0,0,0.05)", whiteSpace: "pre-wrap", wordBreak: "break-word"
+              border: "1px solid #2d3f55", boxShadow: "0 1px 4px rgba(0,0,0,0.05)", whiteSpace: "pre-wrap", wordBreak: "break-word"
             }}>
               {m.content}
             </div>
           ))
         )}
         {loading && (
-          <div style={{ alignSelf: "flex-start", background: "white", border: "1px solid #e8e8e8", padding: "10px 16px", borderRadius: "14px 14px 14px 3px", display: "flex", gap: "5px", alignItems: "center" }}>
+          <div style={{ alignSelf: "flex-start", background: "#1e293b", border: "1px solid #2d3f55", padding: "10px 16px", borderRadius: "14px 14px 14px 3px", display: "flex", gap: "5px", alignItems: "center" }}>
             {[0,1,2].map(i => <div key={i} style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#2f8d46", animation: "bounce 1.2s infinite", animationDelay: `${i*0.2}s` }} />)}
           </div>
         )}
@@ -125,17 +358,17 @@ function ChatBot({ icon, title, subtitle, systemPrompt, quickChips, extraHeader,
 
       {/* Quick chips */}
       {quickChips && (
-        <div style={{ padding: isMobile ? "0 12px 12px" : "0 20px 14px", background: "white", display: "flex", gap: "7px", flexWrap: "wrap" }}>
+        <div style={{ padding: isMobile ? "0 12px 12px" : "0 20px 14px", background: "#1e293b", display: "flex", gap: "7px", flexWrap: "wrap" }}>
           {quickChips.map(q => (
-            <span key={q} style={{ padding: "5px 12px", background: "#f0faf3", border: "1px solid #c8e6c9", borderRadius: "999px", fontSize: isMobile ? "0.75rem" : "0.8rem", color: "#2f8d46", fontWeight: "600", cursor: "pointer" }}
+            <span key={q} style={{ padding: "5px 12px", background: "rgba(47,141,70,0.1)", border: "1px solid #c8e6c9", borderRadius: "999px", fontSize: isMobile ? "0.75rem" : "0.8rem", color: "#2f8d46", fontWeight: "600", cursor: "pointer" }}
               onClick={() => send(q)}>{q}</span>
           ))}
         </div>
       )}
 
       {/* Input row */}
-      <div style={{ display: "flex", gap: "8px", padding: isMobile ? "12px" : "16px 20px", background: "white", borderTop: "1px solid #eee" }}>
-        <textarea style={{ flex: 1, padding: "10px 13px", border: "1px solid #ddd", borderRadius: "10px", fontSize: isMobile ? "0.88rem" : "0.95rem", fontFamily: "inherit", outline: "none", resize: "none", lineHeight: "1.5" }}
+      <div style={{ display: "flex", gap: "8px", padding: isMobile ? "12px" : "16px 20px", background: "#1e293b", borderTop: "1px solid #2d3f55" }}>
+        <textarea style={{ flex: 1, padding: "10px 13px", border: "1px solid #2d3f55", borderRadius: "10px", fontSize: isMobile ? "0.88rem" : "0.95rem", fontFamily: "inherit", outline: "none", resize: "none", lineHeight: "1.5" }}
           placeholder="Type here... (Shift+Enter for new line)" value={input}
           onChange={e => setInput(e.target.value)} onKeyDown={handleKey} rows={2} />
         <button style={{ background: loading || !input.trim() ? "#ccc" : "#2f8d46", color: "white", border: "none", borderRadius: "10px", padding: "0 16px", cursor: loading || !input.trim() ? "not-allowed" : "pointer", fontSize: "1.1rem", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
@@ -160,10 +393,10 @@ function InterviewBotWrapper({ isMobile }) {
   })
 
   const extraHeader = (
-    <div style={{ padding: isMobile ? "10px 12px" : "12px 20px", background: "#f9fafb", borderBottom: "1px solid #eee", display: "flex", gap: "7px", alignItems: "center", flexWrap: "wrap" }}>
-      <span style={{ fontSize: isMobile ? "0.78rem" : "0.82rem", fontWeight: "600", color: "#666", marginRight: "2px" }}>Topic:</span>
+    <div style={{ padding: isMobile ? "10px 12px" : "12px 20px", background: "#172032", borderBottom: "1px solid #eee", display: "flex", gap: "7px", alignItems: "center", flexWrap: "wrap" }}>
+      <span style={{ fontSize: isMobile ? "0.78rem" : "0.82rem", fontWeight: "600", color: "#94a3b8", marginRight: "2px" }}>Topic:</span>
       {TOPICS.map(t => <button key={t} style={diffChip(topic === t)} onClick={() => setTopic(t)}>{t}</button>)}
-      <span style={{ fontSize: isMobile ? "0.78rem" : "0.82rem", fontWeight: "600", color: "#666", marginLeft: "8px", marginRight: "2px" }}>Diff:</span>
+      <span style={{ fontSize: isMobile ? "0.78rem" : "0.82rem", fontWeight: "600", color: "#94a3b8", marginLeft: "8px", marginRight: "2px" }}>Diff:</span>
       {DIFFICULTIES.map(d => <button key={d} style={diffChip(difficulty === d)} onClick={() => setDifficulty(d)}>{d}</button>)}
     </div>
   )
@@ -191,26 +424,38 @@ function InterviewBotWrapper({ isMobile }) {
 }
 
 function AIHub() {
+  const { theme, isDark } = useTheme()
   const [activeTab, setActiveTab] = useState("dsa")
   const isMobile = useIsMobile()
 
   return (
-    <div style={{ padding: isMobile ? "20px 16px" : "40px 48px", fontFamily: "'Segoe UI', sans-serif", maxWidth: "1100px", margin: "0 auto", color: "#1a1a1a" }}>
-      <h1 style={{ fontSize: isMobile ? "1.6rem" : "2rem", fontWeight: "800", marginBottom: "6px" }}>🤖 AI Hub</h1>
-      <p style={{ color: "#666", fontSize: isMobile ? "0.93rem" : "1rem", marginBottom: "28px" }}>
-        Powered by Google Gemini — your AI-powered DSA tutor and interview coach.
+    <div style={{ padding: isMobile ? "20px 16px" : "40px 48px", fontFamily: "'Segoe UI', sans-serif", maxWidth: "1100px", margin: "0 auto", color: theme.text }}>
+      <h1 style={{ fontSize: isMobile ? "1.6rem" : "2rem", fontWeight: "800", marginBottom: "6px", color: theme.text }}>🤖 AI Hub</h1>
+      <p style={{ color: theme.muted, fontSize: isMobile ? "0.93rem" : "1rem", marginBottom: "28px" }}>
+        Powered by Google Gemini — DSA tutor, interview coach & personalised problem recommender.
       </p>
 
-      <div style={{ display: "flex", gap: "10px", marginBottom: "28px" }}>
-        {[{ id: "dsa", label: "🤖 DSA Doubt Solver" }, { id: "interview", label: "🎯 Interview Practice" }].map(({ id, label }) => (
-          <button key={id} style={{ padding: isMobile ? "9px 14px" : "11px 24px", borderRadius: "10px", border: activeTab === id ? "1px solid #2f8d46" : "1px solid #ddd", background: activeTab === id ? "#2f8d46" : "white", cursor: "pointer", fontWeight: "600", fontSize: isMobile ? "0.83rem" : "0.95rem", color: activeTab === id ? "white" : "#555" }}
-            onClick={() => setActiveTab(id)}>
+      <div style={{ display: "flex", gap: "8px", marginBottom: "28px", flexWrap: "wrap" }}>
+        {[
+          { id: "dsa",         label: "🤖 DSA Doubt Solver"    },
+          { id: "interview",   label: "🎯 Interview Practice"   },
+          { id: "recommender", label: "✨ Problem Recommender"  },
+        ].map(({ id, label }) => (
+          <button key={id} onClick={() => setActiveTab(id)} style={{
+            padding: isMobile ? "8px 12px" : "11px 22px", borderRadius: "10px",
+            border: activeTab === id ? "1px solid #2f8d46" : `1px solid ${theme.border}`,
+            background: activeTab === id ? "#2f8d46" : theme.card,
+            cursor: "pointer", fontWeight: "600",
+            fontSize: isMobile ? "0.8rem" : "0.93rem",
+            color: activeTab === id ? "white" : theme.muted,
+            transition: "all 0.15s", fontFamily: "inherit"
+          }}>
             {label}
           </button>
         ))}
       </div>
 
-      {activeTab === "dsa" ? (
+      {activeTab === "dsa" && (
         <ChatBot
           icon="🤖"
           title="DSA Doubt Solver"
@@ -222,9 +467,9 @@ function AIHub() {
           welcomeText="Your personal DSA tutor is ready!"
           welcomeSub="Ask any doubt — arrays, trees, DP, graphs, complexity... anything!"
         />
-      ) : (
-        <InterviewBotWrapper isMobile={isMobile} />
       )}
+      {activeTab === "interview"   && <InterviewBotWrapper isMobile={isMobile} />}
+      {activeTab === "recommender" && <ProblemRecommender  isMobile={isMobile} />}
     </div>
   )
 }
