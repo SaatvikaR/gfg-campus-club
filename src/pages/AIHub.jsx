@@ -45,27 +45,29 @@ Be encouraging but honest — give a score out of 10 for each answer.
 Format questions clearly as: "Question: ..."
 Keep feedback structured: Strengths → Gaps → Ideal Answer → Score`
 
-const RECOMMENDER_SYSTEM = `You are a competitive programming mentor at GeeksforGeeks Campus Club, RIT.
-Your job is to recommend exactly 8 coding problems from GeeksforGeeks based on the student's interests and skill level.
+const RECOMMENDER_SYSTEM = `You are a coding problem recommender for GeeksforGeeks Campus Club, RIT.
 
-For each problem, provide:
-1. Problem Name
-2. Topic
-3. Difficulty (Easy / Medium / Hard)
-4. Why it's good for them (one sentence)
-5. Direct GFG URL (use real geeksforgeeks.org problem links)
+STRICT RULES — follow exactly, no exceptions:
+- Do NOT write any introduction, greeting, or explanation text
+- Do NOT say "Hello", "Sure", "Here are", or anything before the list
+- ONLY output exactly 8 problems in the format below, nothing else
+- Start your response directly with "1."
 
-Format your response as a clean numbered list like this:
+REQUIRED FORMAT (copy exactly):
 1. **Problem Name** | Topic | Difficulty
-   Why: <reason>
-   Link: https://www.geeksforgeeks.org/...
+   Why: one sentence reason
+   Link: https://www.geeksforgeeks.org/actual-problem-slug/
 
 2. **Problem Name** | Topic | Difficulty
-   Why: <reason>
-   Link: https://www.geeksforgeeks.org/...
+   Why: one sentence reason
+   Link: https://www.geeksforgeeks.org/actual-problem-slug/
 
-Only recommend problems from GeeksforGeeks. Be specific with real problem names and real URLs.
-Do not make up URLs — only use actual GFG problem links you are confident about.`
+(continue for all 8 problems)
+
+Rules:
+- Difficulty must be exactly one of: Easy, Medium, Hard
+- Use only real GeeksforGeeks problem URLs you are confident about
+- No extra text before or after the list`
 
 const DSA_QUICK = ["Explain Binary Search", "What is Dynamic Programming?", "Difference between Stack and Queue", "Explain BFS vs DFS", "What is time complexity?", "Explain Merge Sort"]
 const TOPICS       = ["DSA", "Operating Systems", "DBMS", "Computer Networks", "System Design", "HR/Behavioral"]
